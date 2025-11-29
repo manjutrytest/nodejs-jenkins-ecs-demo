@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Jenkins EC2 Instance with Docker
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: nodejs-jenkins-demo
+  
+  KeyName:
+    Type: String
+    Description: EC2 Key Pair name
+    Default: ''
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref KeyName, '']]
+
+Resources:
+  JenkinsEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: 
+        Fn::ImportValue: !Sub ${EnvironmentName}-JenkinsInstanceProfile
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref 'AWS::NoValue']
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet:
+            - sg-0854d6ac5738a6d1c
+          SubnetId: 
+            Fn::ImportValue: !Sub ${EnvironmentName}-PublicSubnet1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Update system
+          yum update -y
+          
+          # Install Docker
+          yum install -y docker
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ec2-user
+          
+          # Install Git
+          yum install -y git
+          
+          # Install AWS CLI v2
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          ./aws/install
+          
+          # Install Jenkins
+          wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+          rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+          yum install -y java-17-amazon-corretto
+          yum install -y jenkins
+          
+          # Add jenkins user to docker group
+          usermod -aG docker jenkins
+          
+          # Start Jenkins
+          systemctl start jenkins
+          systemctl enable jenkins
+          
+          # Install Node.js
+          curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+          yum install -y nodejs
+          
+          echo "Jenkins setup complete!"
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-jenkins
+
+Outputs:
+  JenkinsURL:
+    Description: Jenkins URL
+    Value: !Sub 'http://${JenkinsEC2Instance.PublicIp}:8080'
+    Export:
+      Name: !Sub ${EnvironmentName}-JenkinsURL
+
+  JenkinsPublicIP:
+    Description: Jenkins Public IP
+    Value: !GetAtt JenkinsEC2Instance.PublicIp
+    Export:
+      Name: !Sub ${EnvironmentName}-JenkinsPublicIP

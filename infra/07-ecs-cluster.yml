@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Cluster and Service
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: nodejs-jenkins-demo
+  
+  ImageUri:
+    Type: String
+    Description: ECR Image URI
+    Default: 047861165149.dkr.ecr.eu-north-1.amazonaws.com/nodejs-demo-app:latest
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: nodejs-demo-cluster
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-cluster
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: nodejs-demo-task
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: 
+        Fn::ImportValue: !Sub ${EnvironmentName}-ECSTaskExecutionRoleArn
+      TaskRoleArn: 
+        Fn::ImportValue: !Sub ${EnvironmentName}-ECSTaskRoleArn
+      ContainerDefinitions:
+        - Name: nodejs-app
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: PORT
+              Value: '3000'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: nodejs-app
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${EnvironmentName}
+      RetentionInDays: 7
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: nodejs-demo-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 2
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - Fn::ImportValue: !Sub ${EnvironmentName}-PublicSubnet1
+            - Fn::ImportValue: !Sub ${EnvironmentName}-PublicSubnet2
+          SecurityGroups:
+            - sg-0722e5cbbe533765c
+      LoadBalancers:
+        - ContainerName: nodejs-app
+          ContainerPort: 3000
+          TargetGroupArn: 
+            Fn::ImportValue: !Sub ${EnvironmentName}-TargetGroupArn
+      HealthCheckGracePeriodSeconds: 60
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-service
+
+Outputs:
+  ECSClusterName:
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub ${EnvironmentName}-ECSClusterName
+
+  ECSServiceName:
+    Value: !GetAtt ECSService.Name
+    Export:
+      Name: !Sub ${EnvironmentName}-ECSServiceName
