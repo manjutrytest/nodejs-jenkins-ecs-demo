@@ -1,4 +1,5 @@
 # Node.js CI/CD with Jenkins, Docker, ECR & ECS
+<img width="515" height="176" alt="image" src="https://github.com/user-attachments/assets/9f355dde-31da-450c-b65e-ae922d3c805c" />
 
 Production-ready CI/CD pipeline deploying Node.js applications to AWS ECS using Jenkins.
 
@@ -152,3 +153,4 @@ MIT License - Feel free to use for learning and projects
 ## 📧 Contact
 
 Repository: https://github.com/manjutrytest/nodejs-jenkins-ecs-demo
+
